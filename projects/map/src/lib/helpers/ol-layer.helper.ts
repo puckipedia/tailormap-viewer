@@ -1,9 +1,11 @@
 import BaseLayer from 'ol/layer/Base';
 import Projection from 'ol/proj/Projection';
+import WebGLTileLayer from 'ol/layer/WebGLTile';
 import TileLayer from 'ol/layer/Tile';
 import WMTS, { optionsFromCapabilities } from 'ol/source/WMTS';
 import XYZ from 'ol/source/XYZ';
 import { TMSLayerModel } from '../models/tms-layer.model';
+import { CanvasOrWebGLTileLayer } from './ol-layer-types.helper';
 import { LayerTypesHelper } from './layer-types.helper';
 import { OgcHelper } from './ogc.helper';
 import { LayerModel } from '../models/layer.model';
@@ -42,6 +44,17 @@ interface WmsServiceParamsModel {
 const MAX_URL_LENGTH_BEFORE_POST = 4096;
 
 export class OlLayerHelper {
+  private static _isWebGLCapable: boolean | undefined = undefined;
+  private static isWebGLCapable() {
+    if (OlLayerHelper._isWebGLCapable !== undefined) {
+      return OlLayerHelper._isWebGLCapable;
+    }
+
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl');
+    OlLayerHelper._isWebGLCapable = gl instanceof WebGLRenderingContext;
+    return OlLayerHelper._isWebGLCapable;
+  }
 
   public static setLayerProps(layer: LayerModel, olLayer: BaseLayer) {
     const layerProps: LayerProperties = {
@@ -72,7 +85,7 @@ export class OlLayerHelper {
     pixelRatio?: number,
     ngZone?: NgZone,
     httpXsrfTokenExtractor?: HttpXsrfTokenExtractor,
-  ): TileLayer<TileWMS> | ImageLayer<ImageWMS> | TileLayer<XYZ> | TileLayer<WMTS> | null {
+  ): CanvasOrWebGLTileLayer<TileWMS> | ImageLayer<ImageWMS> | CanvasOrWebGLTileLayer<XYZ> | CanvasOrWebGLTileLayer<WMTS> | null {
     if (LayerTypesHelper.isTmsLayer(layer)) {
       return OlLayerHelper.createTMSLayer(layer, projection);
     }
@@ -88,7 +101,7 @@ export class OlLayerHelper {
   /**
    * service is optional but can be passed to set the WMTSLayerModel properties from the WMTS Capabilities
    */
-  public static createWMTSLayer(layer: WMTSLayerModel, projection: Projection, pixelRatio?: number): TileLayer<WMTS> | null {
+  public static createWMTSLayer(layer: WMTSLayerModel, projection: Projection, pixelRatio?: number): CanvasOrWebGLTileLayer<WMTS> | null {
     const parser = new WMTSCapabilities();
     const capabilities = parser.read(layer.capabilities);
 
@@ -144,14 +157,14 @@ export class OlLayerHelper {
     }
 
     const source = new WMTS(options);
-    return new TileLayer({
+    return new (OlLayerHelper.isWebGLCapable() ? WebGLTileLayer : TileLayer)({
       visible: layer.visible,
       source,
-    });
+    }) as CanvasOrWebGLTileLayer<WMTS>;
   }
 
-  public static createTMSLayer(layer: TMSLayerModel, projection: Projection): TileLayer<XYZ> {
-    return new TileLayer({
+  public static createTMSLayer(layer: TMSLayerModel, projection: Projection): CanvasOrWebGLTileLayer<XYZ> {
+    return new (OlLayerHelper.isWebGLCapable() ? WebGLTileLayer : TileLayer)({
       visible: layer.visible,
       source: new XYZ({
         ...layer.xyzOptions,
@@ -159,7 +172,7 @@ export class OlLayerHelper {
         projection,
         tilePixelRatio: layer.tilePixelRatio,
       }),
-    });
+    }) as CanvasOrWebGLTileLayer<XYZ>;
   }
 
   public static createWMSLayer(
@@ -167,7 +180,7 @@ export class OlLayerHelper {
     projection: Projection,
     ngZone?: NgZone,
     httpXsrfTokenExtractor?: HttpXsrfTokenExtractor,
-  ): TileLayer<TileWMS> | ImageLayer<ImageWMS> {
+  ): CanvasOrWebGLTileLayer<TileWMS> | ImageLayer<ImageWMS> {
     let serverType: ServerType | undefined;
     let hidpi = true;
 
@@ -206,10 +219,10 @@ export class OlLayerHelper {
         tileLoadFunction,
         tileGrid,
       });
-      return new TileLayer({
+      return new (OlLayerHelper.isWebGLCapable() ? WebGLTileLayer : TileLayer)({
         visible: layer.visible,
         source,
-      });
+      }) as CanvasOrWebGLTileLayer<TileWMS>;
     }
   }
 
